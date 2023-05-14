@@ -1,0 +1,1865 @@
+//头文件
+#pragma comment(lib,"Winmm.lib")
+#include <graphics.h>
+#include <stdio.h>
+#include <string.h>
+#include <windows.h>
+#include <conio.h>
+#include <math.h>
+#include <time.h>
+#include <stdlib.h>
+#include <string.h>
+
+//宏定义
+#define LENGTH 2					//车图片数组长度
+#define WIDTH 1280					//游戏窗口宽度(x)
+#define HEIGHT 960					//游戏窗口高度(y)
+#define SIZE 200					//车的尺寸
+#define SIZE_OBSTACLE 128			//障碍物的尺寸
+#define SIZE_NUM 20					//数字的尺寸
+#define SIZE_ROCKET 100				//火箭的尺寸
+#define PI 3.14159265359			//Π
+
+//状态全局变量					
+bool isMenu = false;				//是否点开过菜单
+bool onFire = false;				//是否发射过火箭
+bool isUp = false;					//是否已按下过向上的按键
+bool isDown = false;				//是否已按下过向下的按键
+bool isHit = false;					//是否已发生碰撞
+bool first_play;					//是否第一次游玩
+
+//图片全局变量
+IMAGE frontCover;					//游戏封面图片
+IMAGE grass;						//草地图片
+IMAGE car_Audi[LENGTH];				//奥迪车图片
+IMAGE car_Bmw[LENGTH];				//宝马车图片
+IMAGE car_Mercedes[LENGTH];			//奔驰车图片
+IMAGE car_black[LENGTH];			//黑车图片
+IMAGE garage;						//车库图片
+IMAGE map_1;						//地图图片
+IMAGE map_2;
+IMAGE car_circle[LENGTH];			//旋转后汽车图片
+IMAGE rock[LENGTH];					//障碍物石头图片
+IMAGE rocket_img[LENGTH];			//火箭图片
+IMAGE number[10];					//用于时间的数字组图片
+IMAGE show;							//信息框
+IMAGE bomb[LENGTH];					//爆炸图片
+IMAGE life;							//生命值图片
+IMAGE success;						//成功图片
+IMAGE black;						//黑色背景图
+IMAGE star_black;					//黑星
+IMAGE star_yellow;					//黄星
+IMAGE terminalPoint;				//终点图片
+IMAGE gameOver;						//gameover图片
+IMAGE gameWin;						//gamewin图片
+IMAGE bomb_car[LENGTH];				//车辆爆炸图片
+IMAGE site;							//设置图片
+IMAGE temp;							//暂时存储游戏信息
+IMAGE add_life;						//增加生命值图片
+IMAGE add_rocket;					//增加弹药图片
+
+//消息全局变量
+ExMessage m;						//定义消息变量（鼠标）
+
+//数据全局变量
+double Forward = 0;					//车辆方向
+double Rota = 360;					//角速度(转向速度)
+
+//用户信息
+char* name;							//用户姓名
+char* password;						//用户密码
+
+//地图像素点信息数组
+int map_information[WIDTH][HEIGHT];
+
+//终点初始y坐标
+int end_y = -100;
+
+//玩家获得分数全局变量
+long score = 0;
+
+//车辆速度全局变量
+int speed_show = 30;
+const int speed_min = 20;			//速度最小值
+const int speed_max = 98;			//速度最大值
+long distance = 0;					//路程
+
+//获得三星的条件
+const int first_star = 500;			//一星分数下限
+const int second_star = 2000;		//二星分数下限
+const int third_star = 5000;		//三星分数下限
+
+//时间全局变量
+time_t game_sum = 0;				//游戏总时间
+time_t game_begin = 0;				//游戏开始时间
+time_t game_progress = 0;			//游戏进程时间
+time_t menu_begin = 0;				//开始进入菜单的时间
+time_t menu_progress = 0;			//菜单进程时间
+time_t menu_sum = 0;				//菜单总时间
+time_t fire_last = 0;				//火箭上次发射时间
+time_t fire_now = 0;				//火箭现在发射时间
+time_t control_up_last = 0;			//上次向上控制时间
+time_t control_down_last = 0;		//上次向下控制时间	
+
+//模式一地图可供生成障碍物的横坐标
+int map_obstacle[3] = {
+	//一道
+	230,
+	//二道
+	530,
+	//三道
+	900,
+};
+
+//结构体
+//创建按钮的结构体
+typedef struct button
+{
+	int x;
+	int y;
+	int width;
+	int height;
+	COLORREF color;
+	const char* buttonText;
+}Button;
+
+//创建车的结构体
+typedef struct car
+{
+	int x;							//车的(x, y)坐标，以及速度
+	int y;
+	int speed;
+	time_t last;					//上次碰撞的时间
+	bool life;						//是否存活
+}Car;
+
+//创建障碍物的结构体
+typedef struct obstacle {
+	int x;
+	int y;
+	int speed;
+	time_t last;					//上次时间
+	bool status;
+}Obstacle;
+
+//创建地图的结构体
+typedef struct map {
+	int x;
+	int y;
+	int speed;
+}Map;
+
+//创建火箭的结构体
+typedef struct rocket {
+	int x;
+	int y;
+	int speed;
+	bool status;					//火箭的状态，true为可用，false为不可用
+}Rocket;
+
+//创建排行榜链表
+typedef struct node {
+	int no;
+	char name[50];
+	int score;
+	struct node* next;
+}TOPNODE;
+
+//函数声明
+int main(void);																//主函数
+Button* createButton(int x, int y, int width, int height, COLORREF color,
+	const char* buttonText);												//按钮对象的创建
+void drawButton(Button* button, bool title);								//绘制按钮( title 用于调整字体)
+Car* createCar(int x, int y, int speed, bool life, time_t last);			//车对象的创建
+void loadImage();															//加载图片
+bool mouseDetect(Button* button, ExMessage m);								//判断鼠标点击事件是否发生在按钮边框范围内
+void drawFrontCover();														//创建游戏封面以及处理主界面按钮点击事件
+int drawCarSelection();														//创建选车画面
+void controlCar();															//控制汽车
+int pointTsm(int x, int y, int wide, int high);								//越界检测
+void edgeDetection(Car* car);												//边缘检测
+bool canCircle(Car* car);													//判断是否可以旋转
+void onUp(Car* car);
+void onDown(Car* car);
+void onLeft(Car* car);
+void onRight(Car* car);
+void mode_1();																//模式一
+Obstacle* createObstacle(int x, int y, int speed, bool status,
+	time_t last);															//障碍对象的创建
+Map* createMap(int x, int y, int speed);									//地图对象的创建
+Rocket* createRocket(int x, int y, int speed, bool status);					//火箭对象的创建
+void pauseInterface();														//暂停界面
+char* login_name();															//输入用户姓名
+bool haveSpace(char* input);												//检测用户输入是否含有空格
+char* login_password();														//输入用户密码
+void checkUsers(char* name);												//检测用户是否存在
+void PutNumber(long x, long y, long number, int TextSize = 10,
+	int TextProportion = 2, int TextInterval = 0,
+	COLORREF tc = 0x000000, LPCTSTR font = "宋体");							//将long类型数字呈现在画布上
+void winInterface();														//获胜界面
+void loseInterface();														//失败界面
+TOPNODE* loadNode();														//读取排行榜
+void showNode();															//展示排行榜
+void changeNode(TOPNODE* h);												//改变排行榜链表
+TOPNODE* reNode(TOPNODE* h);												//重构排行榜顺序
+void rewriteNode(TOPNODE* h);												//重写排行榜
+void node_main();															//排行榜链表主函数
+
+int main(void)
+{
+	loadImage();										//加载图片
+	initgraph(WIDTH, HEIGHT);							//初始化游戏窗口(1280 * 960)
+	drawFrontCover();
+	system("pause");
+	closegraph();
+}
+
+//按钮对象的创建
+Button* createButton(int x, int y, int width, int height, COLORREF color, const char* buttonText) {
+	Button* button = (Button*)malloc(sizeof(Button) * 1);
+
+	button->x = x;
+	button->y = y;
+	button->width = width;
+	button->height = height;
+	button->color = color;
+	button->buttonText = buttonText;
+
+	return button;
+}
+
+//绘制按钮( title 用于调整字体)
+void drawButton(Button* button, bool title) {
+	int width, height;									//用于计算文字居中显示所需距离边框的宽与高的变量
+	setlinecolor(WHITE);								//设置按钮边框线条颜色
+	setbkmode(TRANSPARENT);								//设置文字背景透明
+	settextcolor(button->color);						//设置文字颜色
+
+	//字符串内容是否用于标题，将选择不同的字体设置
+	if (title == true) {
+		settextstyle(120, 0, "隶书", 5, 0, 10, true, true, false);
+		setlinestyle(PS_DASHDOT, 10);
+	}
+	else {
+		settextstyle(50, 0, "楷书");
+		setlinestyle(PS_SOLID, 10);
+	}
+
+	//绘制按钮
+	roundrect(button->x, button->y,
+		button->x + button->width, button->y + button->height, 30, 30);		//绘制圆角矩形边框
+	width = button->width / 2 - textwidth(button->buttonText) / 2;			//文字距左边框的距离
+	height = button->height / 2 - textheight(button->buttonText) / 2;		//文字距上边框的高度
+	outtextxy(button->x + width, button->y + height, button->buttonText);	//输出文字内容
+
+	return;
+}
+
+//判断鼠标点击事件是否发生在按钮边框范围内
+bool mouseDetect(Button* button, ExMessage m) {
+	if (m.x >= button->x
+		&& m.x <= (button->x + button->width)
+		&& m.y >= button->y
+		&& m.y <= (button->y + button->height))
+		return true;
+	else
+		return false;
+}
+
+//创建游戏封面以及处理主界面按钮点击事件
+void drawFrontCover() {
+	Button* title, * start, * instruction, * quit;									//定义按钮结构体指针
+	//loadimage(&frontCover, (".\\image\\封面.jpg"), NULL);
+	putimage(0, 0, &frontCover);													//呈现封面背景图
+	score = 0;
+	//创建按钮对象
+	title = createButton(350, 50, 580, 150, RGB(237, 255, 83), "赛车游戏");			//标题对象
+	start = createButton(500, 300, 280, 80, BLACK, "开始游戏");						//开始对象
+	instruction = createButton(500, 430, 280, 80, RGB(51, 235, 149), "玩法介绍");	//介绍对象
+	quit = createButton(500, 560, 280, 80, RGB(3, 0, 255), "退出游戏");				//退出对象
+
+	//绘制按钮
+	drawButton(title, true);			//创建标题按钮	
+	drawButton(start, false);			//创建“开始游戏”按钮
+	drawButton(instruction, false);		//创建“玩法介绍”按钮
+	drawButton(quit, false);			//创建“退出游戏"按钮
+
+	//用户信息输入
+	name = login_name();
+	checkUsers(name);
+
+	//背景音乐
+	//循环播放
+	//PlaySound(".\\sound\\bk.wav", NULL, SND_ASYNC | SND_FILENAME | SND_LOOP);
+	mciSendString("open .\\sound\\bk.mp3 alias bkmusic", NULL, 0, NULL);
+	mciSendString("play bkmusic repeat from 0", NULL, 0, NULL);
+	//检测鼠标对于封面按钮的点击事件
+	while (true) {
+		m = getmessage(EX_MOUSE);		//获取鼠标信息
+		switch (m.message) {
+		case WM_LBUTTONDOWN:
+			//检测是否按下“开始游戏”按钮
+			if (mouseDetect(start, m)) {
+				printf("开始游戏");
+				cleardevice();
+				//controlCar();
+				mode_1();
+			}
+			//检测是否按下“玩法介绍”按钮
+			if (mouseDetect(instruction, m)) {
+				MessageBox(NULL,
+					"用户可以通过'W','S','A','D' 或 ↑ ↓ ← → 按键分别控制汽车的前后左右\n按空格键发射导弹，接触石头后可打碎石头，并加100分\n去挑战更高分吧，勇士！",
+					"玩法介绍", MB_ICONEXCLAMATION | MB_SETFOREGROUND);
+			}
+			//检测是否按下“退出游戏”按钮
+			if (mouseDetect(quit, m)) {
+				exit(-1);
+			}
+		}
+	}
+}
+
+//加载图片
+void loadImage() {
+	//封面图片
+	loadimage(&frontCover, (".\\image\\封面.jpg"), NULL);
+
+	//车库图片
+	loadimage(&garage, ".\\image\\车库.jpg", WIDTH, HEIGHT);
+
+	//奥迪车图片
+	loadimage(&car_Audi[0], ".\\image\\奥迪A4L1.png", SIZE, SIZE);
+	loadimage(&car_Audi[1], ".\\image\\奥迪A4L2.png", SIZE, SIZE);
+
+	//宝马车图片
+	loadimage(&car_Bmw[0], ".\\image\\宝马X31.png", SIZE, SIZE);
+	loadimage(&car_Bmw[1], ".\\image\\宝马X32.png", SIZE, SIZE);
+
+	//奔驰车图片
+	loadimage(&car_Mercedes[0], ".\\image\\奔驰E级1.png", SIZE, SIZE);
+	loadimage(&car_Mercedes[1], ".\\image\\奔驰E级2.png", SIZE, SIZE);
+
+	//黑车图片
+	loadimage(&car_black[0], ".\\image\\car_black1.png", NULL);
+	loadimage(&car_black[1], ".\\image\\car_black2.png", NULL);
+
+	//地图图片
+	loadimage(&map_1, ".\\image\\map1.png", NULL);
+	loadimage(&map_2, ".\\image\\地图1.png", NULL);
+
+	//障碍物石头图片
+	loadimage(&rock[0], ".\\image\\石头1.png", SIZE_OBSTACLE, SIZE_OBSTACLE);
+	loadimage(&rock[1], ".\\image\\石头2.png", SIZE_OBSTACLE, SIZE_OBSTACLE);
+
+	//火箭图片
+	loadimage(&rocket_img[0], ".\\image\\火箭1.png", SIZE_ROCKET, SIZE_ROCKET);
+	loadimage(&rocket_img[1], ".\\image\\火箭2.png", SIZE_ROCKET, SIZE_ROCKET);
+
+	//数字图片0~9
+	loadimage(&number[0], ".\\image\\0.jpg", SIZE_NUM, SIZE_NUM);
+	loadimage(&number[1], ".\\image\\1.jpg", SIZE_NUM, SIZE_NUM);
+	loadimage(&number[2], ".\\image\\2.jpg", SIZE_NUM, SIZE_NUM);
+	loadimage(&number[3], ".\\image\\3.jpg", SIZE_NUM, SIZE_NUM);
+	loadimage(&number[4], ".\\image\\4.jpg", SIZE_NUM, SIZE_NUM);
+	loadimage(&number[5], ".\\image\\5.jpg", SIZE_NUM, SIZE_NUM);
+	loadimage(&number[6], ".\\image\\6.jpg", SIZE_NUM, SIZE_NUM);
+	loadimage(&number[7], ".\\image\\7.jpg", SIZE_NUM, SIZE_NUM);
+	loadimage(&number[8], ".\\image\\8.jpg", SIZE_NUM, SIZE_NUM);
+	loadimage(&number[9], ".\\image\\9.jpg", SIZE_NUM, SIZE_NUM);
+
+	//信息栏图片
+	loadimage(&show, ".\\image\\show.png", NULL);
+
+	//爆炸图片
+	loadimage(&bomb[0], ".\\image\\爆炸1.png", SIZE_OBSTACLE, SIZE_OBSTACLE);
+	loadimage(&bomb[1], ".\\image\\爆炸2.png", SIZE_OBSTACLE, SIZE_OBSTACLE);
+
+	//车辆爆炸图片
+	loadimage(&bomb_car[0], ".\\image\\爆炸1.png", SIZE, SIZE);
+	loadimage(&bomb_car[1], ".\\image\\爆炸2.png", SIZE, SIZE);
+
+	//生命值图片
+	loadimage(&life, ".\\image\\life.bmp", NULL);
+
+	//结算成功图片
+	loadimage(&success, ".\\image\\flag.jpg", NULL);
+
+	//黑色背景图片
+	loadimage(&black, ".\\image\\black.png", NULL);
+
+	//黑星图片
+	loadimage(&star_black, ".\\image\\star1.bmp", NULL);
+
+	//黄星图片
+	loadimage(&star_yellow, ".\\image\\star2.bmp", NULL);
+
+	//终点图片
+	loadimage(&terminalPoint, ".\\image\\终点.png", NULL);
+
+	//gamewin图片
+	loadimage(&gameWin, ".\\image\\gamewin.bmp", NULL);
+
+	//gameover图片
+	loadimage(&gameOver, ".\\image\\gameover.bmp", WIDTH, HEIGHT);
+
+	//设置图片
+	loadimage(&site, ".\\image\\site.jpg", NULL);
+
+	//增加生命值图片
+	loadimage(&add_life, ".\\image\\加生命值.png", NULL);
+
+	//增加弹药图片
+	loadimage(&add_rocket, ".\\image\\加弹药数.png", NULL);
+}
+
+//车对象的创建
+Car* createCar(int x, int y, int speed, bool life, time_t last) {
+	Car* car = (Car*)malloc(sizeof(Car) * 1);
+
+	car->x = x;
+	car->y = y;
+	car->speed = speed;
+	car->life = life;
+	car->last = last;
+
+	return car;
+}
+
+//障碍对象的创建
+Obstacle* createObstacle(int x, int y, int speed, bool status, time_t last) {
+	Obstacle* obstacle = (Obstacle*)malloc(sizeof(Obstacle) * 1);
+
+	obstacle->x = x;
+	obstacle->y = y;
+	obstacle->speed = speed;
+	obstacle->status = status;
+	obstacle->last = last;
+
+	return obstacle;
+}
+
+//地图对象的创建
+Map* createMap(int x, int y, int speed) {
+	Map* map = (Map*)malloc(sizeof(Map) * 1);
+
+	map->x = x;
+	map->y = y;
+	map->speed = speed;
+
+	return map;
+}
+
+//火箭对象的创建
+Rocket* createRocket(int x, int y, int speed, bool status) {
+	Rocket* rocket = (Rocket*)malloc(sizeof(Rocket) * 1);
+
+	rocket->x = x;
+	rocket->y = y;
+	rocket->speed = speed;
+	rocket->status = status;
+
+	return rocket;
+}
+
+//检测用户输入是否含有空格
+bool haveSpace(char* input) {
+	bool isSpace = false;
+	//遍历字符串数组
+	for (int i = 0; i < strlen(input); i++) {
+		if (input[i] == ' ') {
+			isSpace = true;
+		}
+	}
+
+	return isSpace;
+}
+
+//输入用户姓名
+char* login_name() {
+	char* name;
+	char title[30] = "欢迎游玩！这是游戏的登陆界面";		//提示输入框的标题
+	char clue[40] = "请输入您的用户名(不能含有空格)";		//提示输入框的输入
+	//动态分配名字空间
+	name = (char*)malloc(sizeof(char) * 50);
+	while (1) {
+		InputBox(name, 20, clue, title);
+
+		//如果用户的输入含有空格
+		if (haveSpace(name))
+		{
+			/*
+			后两个参数的作用:
+			MB_ICONQUESTION	显示 Warning Message 图标
+			MB_SETFOREGROUND  标志确保消息框成为前台窗口。
+			*/
+			//弹出窗口提示输入的内容
+			MessageBox(NULL,
+				"请正确输入用户名",
+				"请正确输入用户名", MB_ICONEXCLAMATION | MB_SETFOREGROUND);
+			continue;
+		}
+
+		//如果用户未输入
+		if (*name == '\0')
+		{
+			MessageBox(NULL,
+				"您未输入用户名",
+				"您未输入用户名", MB_ICONEXCLAMATION | MB_SETFOREGROUND);
+			continue;
+		}
+		break;
+	}
+
+	return name;
+}
+
+//输入用户姓名
+char* login_password() {
+	char* password;
+	char title[30] = "登录密码";							//提示输入框的标题
+	char clue[40] = "请输入您的密码(不能含有空格)";		//提示输入框的输入
+	//密码动态分配空间
+	password = (char*)malloc(sizeof(char) * 50);
+	while (1) {
+		InputBox(password, 20, clue, title);
+
+		//如果用户的输入含有空格
+		if (haveSpace(password))
+		{
+			/*
+			后两个参数的作用:
+			MB_ICONQUESTION	显示 Warning Message 图标
+			MB_SETFOREGROUND  标志确保消息框成为前台窗口。
+			*/
+			//弹出窗口提示输入的内容
+			MessageBox(NULL,
+				"请正确输入密码",
+				"请正确输入密码", MB_ICONEXCLAMATION | MB_SETFOREGROUND);
+			continue;
+		}
+
+		//如果用户未输入
+		if (*password == '\0')
+		{
+			MessageBox(NULL,
+				"您未输入密码",
+				"您未输入密码", MB_ICONEXCLAMATION | MB_SETFOREGROUND);
+			continue;
+		}
+		break;
+	}
+
+	return password;
+}
+
+// 检测用户是否存在
+void checkUsers(char* name)
+{
+	FILE* fp;
+	errno_t err;													//int重定义，用于后面的错误鉴定
+	//fopen_s的返回值是相应的错误代码，有助于排查问题(打开文件成功返回0，失败返回非0)
+	err = fopen_s(&fp, ".\\users.txt", "a+");						//打开users文件，并执行读写操作
+
+	//如果文件读写没有错误
+	if (err == 0) {
+		//将文件指针置于文件起始位置，且偏移量为0
+		fseek(fp, 0, SEEK_SET);
+		char check_password[50];
+		// 检测用户名单是否有当前用户，如果没有，添加用户并且欢迎，如果有，不再添加用户，并且欢迎用户回来
+		int flag;
+		//当文件指针不在文件结尾时，进行循环
+		while (!(feof(fp)))
+		{
+			char check_name[50];
+			fscanf(fp, "%s", check_name);
+			fscanf(fp, "%s", check_password);
+			if (!(strcmp(check_name, name)))
+			{
+				flag = 1;
+
+				break;		// 一旦发现有本玩家立刻退出循环，防止flag被刷新
+			}
+			else
+				flag = 0;
+		}
+
+		//如果玩家第一次游玩游戏
+		if (flag == 0)
+		{
+			first_play = true;
+			password = login_password();
+			fprintf(fp, "%s %s\n", name, password);
+			char string[70];
+			sprintf_s(string, "用户:%s 欢迎游玩！", name);
+			MessageBox(NULL,
+				"欢迎来游玩CrazzyHe的第一个游戏\n，准备好挑战疯狂赛车游戏了吗？\n点击主界面的第二个栏目，有更详细的游戏玩法解释哦！",
+				string, MB_SETFOREGROUND);
+
+		}
+
+		//如果玩家是非第一次游玩游戏
+		else
+		{
+			first_play = false;
+			int flag = 0;	//用于密码错误次数检测
+			while (1)
+			{
+				password = login_password();
+
+				// 如果密码输入正确
+				if (!(strcmp(password, check_password)))
+				{
+					char string[70];
+					sprintf_s(string, "用户:%s 欢迎回来", name);
+					MessageBox(NULL,
+						"欢迎回来！准备好刷新记录了吗？",
+						string, MB_SETFOREGROUND);
+					break;
+				}
+
+				// 如果密码输入错误
+				else
+				{
+					if (flag == 0)
+					{
+						MessageBox(NULL,
+							"密码错误，你还有1次机会重新输入密码\n否则程序将关闭",
+							"密码错误", MB_SETFOREGROUND);
+						flag = 1;
+						continue;
+					}
+					else
+					{
+						MessageBox(NULL,
+							"密码错误，程序关闭",
+							"密码错误", MB_SETFOREGROUND);
+						exit(-1);
+					}
+				}
+			}
+		}
+	}
+	//如果写入文件错误
+	else if (err != 0) {
+		MessageBox(NULL, "文件操作错误",
+			"文件操作错误，请检查users.txt文件后，重试", MB_SETFOREGROUND);
+		exit(-1);
+	}
+	//关闭文件指针，避免后续程序运行造成文件损坏
+	fclose(fp);
+}
+
+//创建选车画面
+int drawCarSelection() {
+	Button* chose_Audi, * chose_Bmw, * chose_Mercedes, * success;
+	int selection;
+	bool choice_car = false;
+
+	//贴图
+	putimage(0, 0, &garage);
+	putimage(170, 220, &car_Audi[0], NOTSRCERASE);
+	putimage(170, 220, &car_Audi[1], SRCINVERT);
+	putimage(540, 220, &car_Bmw[0], NOTSRCERASE);
+	putimage(540, 220, &car_Bmw[1], SRCINVERT);
+	putimage(910, 220, &car_Mercedes[0], NOTSRCERASE);
+	putimage(910, 220, &car_Mercedes[1], SRCINVERT);
+	outtextxy(450, HEIGHT / 2 + 250, "请选择您的坐骑");
+
+	//按钮结构体初始化
+	chose_Audi = createButton(150, 470, SIZE + 20, SIZE - 100, RGB(255, 165, 165), "选择奥迪");
+	chose_Bmw = createButton(520, 470, SIZE + 20, SIZE - 100, RGB(255, 165, 165), "选择宝马");
+	chose_Mercedes = createButton(890, 470, SIZE + 20, SIZE - 100, RGB(255, 165, 165), "选择奔驰");
+	success = createButton(520, 700, SIZE + 20, SIZE - 100, RGB(255, 165, 165), "选车成功");
+
+	//绘制按钮结构体
+	drawButton(chose_Audi, false);
+	drawButton(chose_Bmw, false);
+	drawButton(chose_Mercedes, false);
+
+	//鼠标事件循环
+	while (true) {
+		m = getmessage(EX_MOUSE);	//获取鼠标信息
+		switch (m.message) {
+		case WM_LBUTTONDOWN:
+			//检测是否按下对应的选车按钮
+
+			//选择奥迪车
+			if (mouseDetect(chose_Audi, m)) {
+				cleardevice();
+				putimage(0, 0, &garage);
+				putimage(520, 400, &car_Audi[0], NOTSRCERASE);
+				putimage(520, 400, &car_Audi[1], SRCINVERT);
+				//单次触发选车成功音效
+				PlaySound(".\\sound\\light.wav", NULL, SND_ASYNC | SND_FILENAME);
+				selection = 1;
+				choice_car = true;
+				break;
+			}
+
+			//选择宝马车
+			if (mouseDetect(chose_Bmw, m)) {
+				cleardevice();
+				putimage(0, 0, &garage);
+				putimage(520, 400, &car_Bmw[0], NOTSRCERASE);
+				putimage(520, 400, &car_Bmw[1], SRCINVERT);
+				PlaySound(".\\sound\\light.wav", NULL, SND_ASYNC | SND_FILENAME);
+				selection = 2;
+				choice_car = true;
+				break;
+			}
+
+			//选择奔驰车
+			if (mouseDetect(chose_Mercedes, m)) {
+				cleardevice();
+				putimage(0, 0, &garage);
+				putimage(520, 400, &car_Mercedes[0], NOTSRCERASE);
+				putimage(520, 400, &car_Mercedes[1], SRCINVERT);
+				PlaySound(".\\sound\\light.wav", NULL, SND_ASYNC | SND_FILENAME);
+				selection = 3;
+				choice_car = true;
+				break;
+			}
+		}
+		if (choice_car == true) {
+			break;
+		}
+	}
+	drawButton(success, false);
+	Sleep(3000);
+	return selection;
+}
+
+//将long类型数字呈现在画布上
+void PutNumber(
+	long x,															//输出位置
+	long y,
+	long number,													//需要转换的数字
+	int TextSize,													//文字的尺寸
+	int TextProportion,												//文字的高宽比
+	int TextInterval,												//文字之间的间隔
+	COLORREF tc,													//文字颜色(默认为黑)
+	LPCTSTR font													//字体设置
+)
+{
+	int max;
+	long int one_data;												//当前位数字
+
+	//文字属性设置
+	settextcolor(tc);												//设置文字颜色
+	setbkmode(TRANSPARENT);											//设置文字背景为透明色
+	settextstyle(TextSize * TextProportion, TextSize, font);		//设置字体与字的大小
+	if (TextInterval == 0)											//如果间隔为0，则自动调整间隔
+		TextInterval = TextSize;
+	for (max = 0; max < 10; max++)									//获得数字位数max
+		if (number / pow(10, max) < 10)
+			break;
+	while (number >= 0) {											//按位输出数字
+		if (max < 0 || x > getwidth())								//如果位数小于0或者x超过程序边界
+			return;
+		one_data = number / (long)pow(10, max);
+		outtextxy(x, y, (char)(one_data + 48));
+		number -= one_data * (long)pow(10, max);
+		--max;
+		x += TextInterval;
+	}
+}
+
+//获胜界面
+void winInterface() {
+	char* show_score;
+	Button* returnMain, * quit;
+	show_score = (char*)malloc(sizeof(char) * 100);
+	sprintf(show_score, "%ld", score);
+	MessageBox(NULL,
+		show_score,
+		"恭喜您获胜，您的分数为：", MB_ICONEXCLAMATION | MB_SETFOREGROUND);
+	putimage(0, 200, &success);
+	settextcolor(WHITE);
+	settextstyle(50, 0, "隶书");
+	mciSendString("close all", NULL, 0, NULL);
+	mciSendString("open .\\sound\\gamewin.mp3 alias gamewinmusic", NULL, 0, NULL);
+	mciSendString("open .\\sound\\light.mp3 alias lightmusic", NULL, 0, NULL);
+	mciSendString("play gamewinmusic from 0", NULL, 0, NULL);
+	BeginBatchDraw();
+	//静态胜利界面展示
+	for (int i = -1280; i <= 0; i++) {
+		putimage(i, 200 + success.getheight(), &black);
+		outtextxy(i + 20, 250 + success.getheight(), "玩家：");
+		outtextxy(i + 200, 250 + success.getheight(), name);
+		//第三颗黑星
+		putimage(i + 1280 - star_black.getwidth(),
+			200 + 2 * success.getheight() - star_black.getheight(),
+			&star_black);
+		//第二颗黑星
+		putimage(i + 1280 - star_black.getwidth() * 2,
+			200 + 2 * success.getheight() - star_black.getheight(),
+			&star_black);
+		//第一颗黑星
+		putimage(i + 1280 - star_black.getwidth() * 3,
+			200 + 2 * success.getheight() - star_black.getheight(),
+			&star_black);
+		FlushBatchDraw();
+	}
+	EndBatchDraw();
+	Sleep(1000);
+	//第一颗黄星
+	if (first_star <= score) {
+		mciSendString("play lightmusic from 0", NULL, 0, NULL);
+		putimage(1280 - star_yellow.getwidth() * 3,
+			200 + 2 * success.getheight() - star_yellow.getheight(),
+			&star_yellow);
+		Sleep(1000);
+	}
+	//第二颗黄星
+	if (second_star <= score) {
+		mciSendString("play lightmusic from 0", NULL, 0, NULL);
+		putimage(1280 - star_yellow.getwidth() * 2,
+			200 + 2 * success.getheight() - star_yellow.getheight(),
+			&star_yellow);
+		Sleep(1000);
+	}
+	//第三颗黄星
+	if (third_star <= score) {
+		mciSendString("play lightmusic from 0", NULL, 0, NULL);
+		putimage(1280 - star_yellow.getwidth(),
+			200 + 2 * success.getheight() - star_yellow.getheight(),
+			&star_yellow);
+		Sleep(1000);
+	}
+	node_main();
+	//创建按钮对象
+	returnMain = createButton(0, 800, 200, 100, BLACK, "主界面");
+	quit = createButton(1080, 800, 200, 100, BLACK, "退出游戏");
+
+	//绘制按钮
+	drawButton(returnMain, false);
+	drawButton(quit, false);
+	FlushBatchDraw();
+
+	//检测鼠标对于暂停页面按钮的点击事件
+	while (true) {
+		m = getmessage(EX_MOUSE);											//获取鼠标信息
+		switch (m.message)
+		{
+		case WM_LBUTTONDOWN:
+			//检测是否按下“返回主界面”按钮
+			if (mouseDetect(returnMain, m)) {
+				cleardevice();
+				drawFrontCover();
+			}
+			//检测是否按下“退出游戏”按钮
+			if (mouseDetect(quit, m)) {
+				exit(-1);
+			}
+		}
+	}
+}
+
+//读取排行榜
+TOPNODE* loadNode() {
+	TOPNODE* h, * r;
+	TOPNODE* p;
+	FILE* top;
+	errno_t err;													//int重定义，用于后面的错误鉴定
+	h = NULL;
+	r = NULL;
+	//fopen_s的返回值是相应的错误代码，有助于排查问题(打开文件成功返回0，失败返回非0)
+	err = fopen_s(&top, ".\\tops.txt", "r");						//打开tops文件，并执行读写操作
+	//如果文件读写没有错误
+	if (err == 0) {
+		//将文件指针置于文件起始位置，且偏移量为0
+		fseek(top, 0L, SEEK_SET);
+		for (int i = 0; i < 10; i++) {
+			p = (TOPNODE*)malloc(sizeof(TOPNODE) * 1);
+			fscanf_s(top, "%d", &p->no);
+			fscanf_s(top, "%s", p->name, _countof(p->name));
+			fscanf_s(top, "%d", &p->score);
+			//尾插法，创建链表，读取排行榜信息
+			p->next = NULL;
+			if (h == NULL) {
+				h = p;
+				r = p;
+			}
+			else {
+				r->next = p;
+				r = p;
+			}
+		}
+	}
+	//如果读取排行榜文件错误
+	else if (err != 0) {
+		MessageBox(NULL, "文件操作错误",
+			"文件操作错误，请检查tops.txt文件后，重试", MB_SETFOREGROUND);
+		exit(-1);
+	}
+	fclose(top);
+	//对于链表功能实现的测试，其功能已能正常实现
+	//测试代码：
+	/*
+	TOPNODE* q = h;
+	while (q != NULL) {
+		printf("%d %s %d \n", q->no, q->name, q->score);
+		q = q->next;
+	}
+	*/
+	return h;
+}
+
+// 展示排行榜
+void showNode()
+{
+
+	char tops[500] = "No\tName\t\tPlayer's Best Score\n";					//存储排行榜前十数据
+	TOPNODE* h;
+	TOPNODE* q;
+	h = loadNode();
+	q = h;
+	for (int i = 0; i < 10; i++)
+	{
+		char top[40];
+		sprintf_s(top, "%d\t%s\t\t%d\n", q->no, q->name, q->score);
+		strcat_s(tops, top);
+		q = q->next;
+	}
+	MessageBox(NULL, tops,
+		"********************排行榜名单***********************", MB_SETFOREGROUND);
+}
+
+//重写排行榜
+void rewriteNode(TOPNODE* h) {
+	/*
+	在调用该函数之前应确保tops.txt文件已处于关闭状态，无指针索引
+	否则，可能会出现stream.valid()的问题，tops指针丢失
+	*/
+	bool is_top;
+	int temp_no;
+	int temp_score;
+	char temp_name[50];
+	TOPNODE* p;
+	FILE* tops;
+	errno_t err;
+	p = (TOPNODE*)malloc(sizeof(TOPNODE) * 1);
+	p = h;
+	is_top = false;
+	err = fopen_s(&tops, ".\\tops.txt", "w");
+	fseek(tops, 0L, SEEK_SET);
+	while (p != NULL) {
+		fprintf_s(tops, "%d %s %d\n", p->no, p->name, p->score);
+		p = p->next;
+	}
+	fclose(tops);
+	err = fopen_s(&tops, ".\\tops.txt", "r");
+	fseek(tops, 0L, SEEK_SET);
+	for (int i = 0; i < 10; i++)
+	{
+		fscanf_s(tops, "%d", &temp_no);
+		fscanf_s(tops, "%s", temp_name, _countof(temp_name));
+		fscanf_s(tops, "%d", &temp_score);
+		if (strcmp(name, temp_name) == 0)
+		{
+			is_top = true;
+			break;
+		}
+	}
+	//玩家上榜
+	if (is_top == true)
+	{
+		MessageBox(NULL, "恭喜上榜，进入前十！",
+			"===============恭喜上榜！！！！===============", MB_SETFOREGROUND);
+	}
+	else
+	{
+		MessageBox(NULL, "恭喜通关！！！！很遗憾，你没能登上排行榜，再接再厉，加油！",
+			"===============恭喜通关！！！！===============", MB_SETFOREGROUND);
+	}
+	fclose(tops);
+}
+
+//重构排行榜顺序
+TOPNODE* reNode(TOPNODE* h) {
+	TOPNODE* p, * f;
+	TOPNODE temp;
+	int i = 1;
+	p = (TOPNODE*)malloc(sizeof(TOPNODE) * 1);
+	p = h;
+	//链表排序
+	while (p->next != NULL) {
+		f = (TOPNODE*)malloc(sizeof(TOPNODE) * 1);
+		f = p->next;
+		while (f != NULL) {
+			if (p->score < f->score) {
+				temp = *p;
+				*p = *f;
+				*f = temp;
+				temp.next = p->next;
+				p->next = f->next;
+				f->next = temp.next;
+			}
+			f = f->next;
+		}
+		p = p->next;
+	}
+	p = h;
+	while (p != NULL)
+	{
+		p->no = i;
+		p = p->next;
+		i++;
+	}
+	//手动打乱tops.txt内部排行榜排序，已验证，排序函数已可以正常运行
+	/*
+	p = h;
+	while (p != NULL) {
+		printf("%d %s %d\n", p->no, p->name, p->score);
+		p = p->next;
+	}
+	*/
+	return h;
+}
+
+// 改变排行榜链表
+void changeNode(TOPNODE* h)
+{
+	TOPNODE* p, * f;
+	int flag;
+	// 检测用
+	char temp_name[50];
+	// 更新用
+	int temp_no;
+	int temp_score;
+	//为链表节点p动态分配数组空间
+	p = (TOPNODE*)malloc(sizeof(TOPNODE) * 1);
+	flag = 0;
+	// 是否已有本玩家检测
+	FILE* tops;
+	errno_t err;
+	err = fopen_s(&tops, ".\\tops.txt", "r");
+	//将文件指针置于文件头部
+	fseek(tops, 0L, SEEK_SET);
+	if (err == 0) {
+		while (!(feof(tops))) {
+			fscanf_s(tops, "%d", &temp_no);
+			fscanf_s(tops, "%s", temp_name, _countof(temp_name));
+			fscanf_s(tops, "%d", &temp_score);
+			if (strcmp(temp_name, name) == 0) {
+				flag = 1;													//用户已存在
+				break;
+			}
+		}
+		//如果玩家已经存在
+		if (flag == 1) {
+			if (score > temp_score) {
+				p = h;
+				while (p != NULL) {
+					if (strcmp(temp_name, p->name) == 0) {
+						p->score = score;
+						break;
+					}
+					p = p->next;
+				}
+				fclose(tops);
+				h = reNode(h);
+				rewriteNode(h);
+				MessageBox(NULL, "恭喜你刷新了个人历史记录！！！！",
+					"===============恭喜破纪录！！！！===============", MB_SETFOREGROUND);
+			}
+			else {
+				MessageBox(NULL, "恭喜通关！！！！很遗憾，你没能刷新个人历史记录，再接再厉，加油！",
+					"===============恭喜通关！！！！===============", MB_SETFOREGROUND);
+			}
+		}
+		else if (flag == 0) {
+			fclose(tops);
+			p = h;
+			while (p->next != NULL) {
+				p = p->next;
+			}
+			TOPNODE* f;
+			f = (TOPNODE*)malloc(sizeof(TOPNODE) * 1);
+			memset(f->name, 0, 50);
+			strcat(f->name, name);
+			f->score = score;
+			f->next = NULL;
+			p->next = f;
+			MessageBox(NULL, "恭喜通关！！！！很遗憾，你之前还没有登上排行榜!",
+				"===============恭喜通关！！！！===============", MB_SETFOREGROUND);
+			h = reNode(h);
+			rewriteNode(h);
+		}
+	}
+	return;
+}
+
+// 排行榜链表主程序
+void node_main()
+{
+	TOPNODE* h = NULL;
+	h = loadNode();
+	h = reNode(h);
+	changeNode(h);
+	showNode();
+}
+
+//暂停界面
+void pauseInterface() {
+	Button* goOn, * site, * quit;
+	ExMessage m;
+	bool play = false;
+	menu_begin = time(NULL);
+	isMenu = true;
+	setbkmode(TRANSPARENT);													//设置文字背景透明
+	settextcolor(BLACK);													//设置文字颜色
+	settextstyle(100, 0, "隶书");
+
+	//创建按钮对象
+	goOn = createButton(440, 360, 400, 100, BLACK, "继续游戏");
+	//site = createButton(440, 520, 400, 100, BLACK, "游戏设置");
+	quit = createButton(440, 680, 400, 100, BLACK, "退出游戏");
+	roundrect(340, 160, 940, 800, 30, 30);
+	outtextxy(540, 200, "暂停");
+
+	//绘制按钮
+	drawButton(goOn, false);
+	//drawButton(site, false);
+	drawButton(quit, false);
+	FlushBatchDraw();
+
+	//检测鼠标对于暂停页面按钮的点击事件
+	while (!play) {
+		m = getmessage(EX_MOUSE);											//获取鼠标信息
+		switch (m.message)
+		{
+		case WM_LBUTTONDOWN:
+			//检测是否按下“开始游戏”按钮
+			if (mouseDetect(goOn, m)) {
+				cleardevice();
+				play = true;
+				menu_progress = time(NULL);
+				menu_sum += (menu_progress - menu_begin);
+				break;
+			}
+			/*
+			//检测是否按下“设置”按钮
+			if (mouseDetect(site, m)) {
+			}
+			*/
+			//检测是否按下“退出游戏”按钮
+			if (mouseDetect(quit, m)) {
+				exit(-1);
+			}
+		}
+	}
+}
+
+//失败界面
+void loseInterface() {
+	EndBatchDraw();
+	Button* returnMain, * quit;
+	MessageBox(NULL,
+		"您的赛车血量已耗尽，感谢您的游玩，欢迎您再次挑战",
+		"失败", MB_SETFOREGROUND);
+	mciSendString("close all", NULL, 0, NULL);
+	mciSendString("open .\\sound\\gameover.mp3 alias gameovermusic", NULL, 0, NULL);
+	mciSendString("play gameovermusic from 0", NULL, 0, NULL);
+	//创建按钮对象
+	returnMain = createButton(0, 800, 200, 100, BLACK, "主界面");
+	quit = createButton(1080, 800, 200, 100, BLACK, "退出游戏");
+	cleardevice();
+	//绘制按钮
+	putimage(0, 0, &gameOver);
+	drawButton(returnMain, false);
+	drawButton(quit, false);
+	//检测鼠标对于暂停页面按钮的点击事件
+	while (true) {
+		m = getmessage(EX_MOUSE);											//获取鼠标信息
+		switch (m.message)
+		{
+		case WM_LBUTTONDOWN:
+			//检测是否按下“返回主界面”按钮
+			if (mouseDetect(returnMain, m)) {
+				cleardevice();
+				drawFrontCover();
+			}
+			//检测是否按下“退出游戏”按钮
+			if (mouseDetect(quit, m)) {
+				exit(-1);
+			}
+		}
+	}
+}
+
+//模式一
+void mode_1() {
+	Car* car;
+	Map* map;
+	Obstacle** obstacle;
+	Rocket** rocket;
+	int selection;
+	int life_leave;															//生命值剩余数量
+	int rocket_leave;														//生命值剩余数量
+	IMAGE img_1, img_2;
+	//创建障碍物指针数组
+	obstacle = (Obstacle**)malloc(sizeof(Obstacle) * 3);
+	//创建火箭指针数组
+	rocket = (Rocket**)malloc(sizeof(Rocket) * 3);
+	map = createMap(0, -(960 * 9), 1);										//创建地图对象
+	car = createCar(640, 750, 2, true, 0);									//创建汽车对象
+	selection = drawCarSelection();
+	//暂停播放背景音乐
+	//PlaySound(NULL, NULL, SND_FILENAME | SND_PURGE);
+	mciSendString("stop bkmusic", NULL, 0, NULL);
+	//音乐初始化打开
+	mciSendString("open .\\sound\\game.mp3 alias gamemusic", NULL, 0, NULL);
+	mciSendString("open .\\sound\\fire.mp3 alias firemusic", NULL, 0, NULL);
+	mciSendString("open .\\sound\\crash.mp3 alias crashmusic", NULL, 0, NULL);
+	mciSendString("open .\\sound\\explode.mp3 alias explodemusic", NULL, 0, NULL);
+	//循环播放游戏音乐
+	mciSendString("play gamemusic repeat from 0", NULL, 0, NULL);
+	//基于玩家选车选择，进行图片初始化
+	switch (selection) {
+		//选择奥迪车
+	case 1:
+		img_1 = car_Audi[0];
+		img_2 = car_Audi[1];
+		break;
+
+		//选择宝马车
+	case 2:
+		img_1 = car_Bmw[0];
+		img_2 = car_Bmw[1];
+		break;
+
+		//选择奔驰车
+	case 3:
+		img_1 = car_Mercedes[0];
+		img_2 = car_Mercedes[1];
+		break;
+	}
+
+	//初始化血量信息
+	life_leave = 3;
+
+	//初始化血量信息
+	rocket_leave = 3;
+
+	//初始化障碍物信息
+	for (int i = 0; i < 3; i++) {
+		obstacle[i] = createObstacle(map_obstacle[rand() % 3], -(rand() % (100)), (rand() % 1) + 1, true, 0);
+	}
+
+	//初始化火箭信息
+	for (int i = 0; i < 3; i++) {
+		rocket[i] = createRocket(0, 0, 1, true);
+	}
+	cleardevice();
+	game_begin = time(NULL);												//游戏开始时间
+
+	//地图贴图
+	putimage(map->x, map->y, &map_2);
+
+	//玩家控制车辆初始位置显示
+	putimage(car->x, car->y, &img_1, NOTSRCERASE);
+	putimage(car->x, car->y, &img_2, SRCINVERT);
+	BeginBatchDraw();
+
+	//模式一主循环
+	while (true) {
+		game_progress = time(NULL);											//游戏进程时间
+		game_sum = game_progress - game_begin;								//游戏总时间
+
+		//如果图片加载到尽头，则重置贴图
+		if (map->y == 0) {
+			map->x = 0;
+			map->y = -(960 * 9);
+		}
+
+		//游戏进行时间3s后再布置障碍物，避免出生即触碰障碍物
+		if (game_sum - menu_sum >= 3) {
+			for (int i = 0; i < 3; i++) {
+				obstacle[i]->y += obstacle[i]->speed;
+			}
+		}
+
+		//地图移动
+		map->y += map->speed;
+
+		//车向上移动
+		//当按下 ↑ 与 W 时
+		if (GetAsyncKeyState(VK_UP) || GetAsyncKeyState('W')) {
+			if (0 <= car->y) {
+				car->y -= car->speed;
+
+				//控制速度改变间隔
+				if (!isUp) {
+					isUp = true;
+					control_up_last = game_sum - menu_sum;
+				}
+
+				//速度间隔1s及以上
+				if (speed_show <= speed_max && game_sum - menu_sum - control_up_last >= 1) {
+					isUp = false;
+					speed_show += 1;
+				}
+			}
+		}
+
+		//车向下移动
+		//当按下 ↓ 与 S 时
+		if (GetAsyncKeyState(VK_DOWN) || GetAsyncKeyState('S')) {
+			if (car->y <= 760) {
+				car->y += car->speed;
+
+				//控制速度改变间隔
+				if (!isDown) {
+					isDown = true;
+					control_down_last = game_sum - menu_sum;
+				}
+
+				//速度间隔3s及以上
+				if (speed_show >= speed_min && game_sum - menu_sum - control_down_last >= 3) {
+					isDown = false;
+					speed_show -= 1;
+				}
+			}
+		}
+
+		//车向左移动
+		//当按下 ← 与 A 时
+		if (GetAsyncKeyState(VK_LEFT) || GetAsyncKeyState('A')) {
+			if (150 <= car->x) {
+				car->x -= car->speed;
+			}
+		}
+
+		//车向右移动
+		//当按下 → 与 D 时
+		if (GetAsyncKeyState(VK_RIGHT) || GetAsyncKeyState('D')) {
+			if (car->x <= 930) {
+				car->x += car->speed;
+			}
+		}
+
+		//发射火箭
+		//第一次发射火箭
+		if (!onFire) {
+			fire_last = time(NULL);
+			onFire = true;
+
+			//当按下空格键时
+			if (GetAsyncKeyState(VK_SPACE)) {
+				mciSendString("play firemusic from 0", NULL, 0, NULL);
+				for (int i = 0; i < 3; i++) {
+					//如果障碍物状态为真
+					if (rocket[i]->status == true) {
+						rocket[i]->x = car->x + (SIZE / 2);
+						rocket[i]->y = car->y;
+						rocket[i]->status = false;
+						rocket_leave -= 1;
+						break;
+					}
+				}
+			}
+		}
+
+		//非第一次发射火箭
+		else {
+			//计算两次发射间隔
+			fire_now = time(NULL);
+
+			//按下空格键且发射间隔1s及以上，才可以发射火箭
+			if (GetAsyncKeyState(VK_SPACE) && (fire_now - fire_last) >= 2) {
+				mciSendString("play firemusic from 0", NULL, 0, NULL);
+				for (int i = 0; i < 3; i++) {
+					if (rocket[i]->status == true) {
+						rocket[i]->x = car->x + (SIZE / 2);
+						rocket[i]->y = car->y;
+						rocket[i]->status = false;
+						rocket_leave -= 1;
+						break;
+					}
+				}
+				fire_last = fire_now;
+			}
+		}
+
+		//如障碍物坐标超出范围，则初始化其位置
+		for (int i = 0; i < 3; i++) {
+			if (obstacle[i]->y >= 960) {
+				obstacle[i]->status = true;
+				obstacle[i]->y = -(rand() % 960);
+				obstacle[i]->x = map_obstacle[rand() % 3];
+				obstacle[i]->speed = (rand() % 1) + 1;
+			}
+		}
+
+		//改变火箭位置，并判断其是否超出范围，如若超出范围，则更新其状态为可发射
+		for (int i = 0; i < 3; i++) {
+			if (rocket[i]->status == false) {
+				if (rocket[i]->y <= 0) {
+					rocket[i]->status = true;
+					rocket_leave += 1;
+					continue;
+				}
+				rocket[i]->y -= rocket[i]->speed;
+			}
+		}
+
+		//车辆与障碍物的碰撞检测
+		for (int i = 0; i < 3; i++) {
+			//重置碰撞状态
+			if (isHit == true && game_sum - menu_sum >= 0 && game_sum - menu_sum - car->last > 1) {
+				isHit = false;
+			}
+			//当两图片有交集时if判断成立
+
+			if (obstacle[i]->status == true
+				&& abs((obstacle[i]->x + SIZE_OBSTACLE) / 2 - (car->x + SIZE) / 2) <= abs(SIZE_OBSTACLE - SIZE)
+				&& abs((obstacle[i]->y + SIZE_OBSTACLE) / 2 - (car->y + SIZE) / 2) <= abs(SIZE_OBSTACLE - SIZE)
+				) {
+				//如果生命值归零
+				if (life_leave == 0) {
+					Sleep(1000);
+					loseInterface();
+				}
+
+				//与上次碰撞间隔1s以上才会扣除生命值，避免持续碰撞，血量立即归零
+				if (!isHit) {
+					mciSendString("play crashmusic from 0", NULL, 0, NULL);
+					life_leave -= 1;
+					car->last = game_sum - menu_sum;
+					isHit = true;
+				}
+			}
+		}
+
+		//火箭与障碍物的碰撞检测
+		for (int i = 0; i < 3; i++) {
+			for (int j = 0; j < 3; j++) {
+				//当两图片有交集时if判断成立
+				if (rocket[j]->status == false
+					&& rocket[j]->x >= obstacle[i]->x
+					&& rocket[j]->x <= (obstacle[i]->x + SIZE_OBSTACLE)
+					&& rocket[j]->y <= (obstacle[i]->y + (SIZE_OBSTACLE / 2))
+					&& rocket[j]->y >= obstacle[i]->y
+					|| (rocket[j]->status == false
+						&& (rocket[j]->x + SIZE_ROCKET) <= (obstacle[i]->x + SIZE_OBSTACLE)
+						&& (rocket[j]->x + SIZE_ROCKET) >= obstacle[i]->x
+						&& (rocket[j]->y + SIZE_ROCKET) <= (obstacle[i]->y + (SIZE_OBSTACLE / 2))
+						&& (rocket[j]->y + SIZE_ROCKET) >= obstacle[i]->y)
+					) {
+					mciSendString("play explodemusic from 0", NULL, 0, NULL);
+					rocket[j]->status = true;
+					rocket_leave += 1;
+					rocket[j]->y = 2000;
+					obstacle[i]->status = false;
+					obstacle[i]->last = game_sum - menu_sum;
+					score += 100;
+				}
+			}
+		}
+		//清理贴图
+		cleardevice();
+
+		//地图贴图
+		putimage(map->x, map->y, &map_2);
+
+		//避免障碍物图片贴图重叠
+		if (game_sum - menu_sum >= 3) {
+			for (int i = 0; i < 3; i++) {
+				for (int j = i + 1; j < 3; j++) {
+					//当两图片有交集时if判断成立
+					if (obstacle[j]->x <= obstacle[i]->x
+						&& obstacle[j]->x <= (obstacle[i]->x + SIZE_OBSTACLE)
+						&& obstacle[j]->y <= (obstacle[i]->y + SIZE_OBSTACLE)
+						&& obstacle[j]->y >= obstacle[i]->y
+						|| ((obstacle[j]->x + SIZE_OBSTACLE) <= (obstacle[i]->x + SIZE_OBSTACLE)
+							&& (obstacle[j]->x + SIZE_OBSTACLE) >= obstacle[i]->x
+							&& (obstacle[j]->y + SIZE_OBSTACLE) <= (obstacle[i]->y + SIZE_OBSTACLE)
+							&& (obstacle[j]->y + SIZE_OBSTACLE) >= obstacle[i]->y)
+						) {
+						obstacle[j]->y = -(rand() % 960);
+					}
+				}
+			}
+		}
+
+		//放置障碍物图片
+		if (game_sum - menu_sum >= 3) {
+			for (int i = 0; i < 3; i++) {
+				//如果障碍物状态为真，贴图石头
+				if (obstacle[i]->status == true) {
+					putimage(obstacle[i]->x, obstacle[i]->y, &rock[0], NOTSRCERASE);
+					putimage(obstacle[i]->x, obstacle[i]->y, &rock[1], SRCINVERT);
+				}
+				else {
+					//爆炸画面持续1s
+					if (game_sum - menu_sum >= 3 && game_sum - menu_sum - obstacle[i]->last >= 1) {
+						obstacle[i]->status = true;
+						obstacle[i]->x = map_obstacle[rand() % 3];
+						obstacle[i]->speed = (rand() % 1) + 1;
+						obstacle[i]->y = -(rand() % 960);
+					}
+					else {
+						putimage(obstacle[i]->x, obstacle[i]->y, &bomb[0], NOTSRCERASE);
+						putimage(obstacle[i]->x, obstacle[i]->y, &bomb[1], SRCINVERT);
+					}
+				}
+			}
+		}
+
+		//放置火箭图片
+		for (int i = 0; i < 3; i++) {
+			//如果火箭状态为假,贴图火箭
+			if (rocket[i]->status == false) {
+				putimage(rocket[i]->x, rocket[i]->y, &rocket_img[0], NOTSRCERASE);
+				putimage(rocket[i]->x, rocket[i]->y, &rocket_img[1], SRCINVERT);
+			}
+		}
+
+		//展示信息表
+		putimage(0, 0, &show);
+
+		//时间显示
+		putimage(110, 37, &number[9 - ((game_sum - menu_sum) / 10)]);	//时间贴图十位
+		putimage(135, 37, &number[9 - ((game_sum - menu_sum) % 10)]);	//时间贴图个位
+
+		//车辆速度显示
+		putimage(110, 15, &number[speed_show / 10]);					//速度贴图十位
+		putimage(135, 15, &number[speed_show % 10]);					//速度贴图个位
+
+		//路程显示
+		distance = speed_show * (game_sum - menu_sum);
+		PutNumber(110, 60, distance, 10, 2, 0, WHITE, "宋体");
+
+		//赛车图片显示
+		putimage(car->x, car->y, &img_1, NOTSRCERASE);
+		putimage(car->x, car->y, &img_2, SRCINVERT);
+
+		//生命值信息显示
+		settextstyle(16, 0, ("Consolas"));
+		settextcolor(BLACK);
+		outtextxy(0, 160, "生命值：");
+		rectangle(0, 200, (3 * life.getwidth() + 20), 200 + life.getheight() + 10);
+		for (int i = 0; i < life_leave; i++) {
+			putimage((i * life.getwidth() + 10), 205, &life);
+		}
+
+		//弹药数信息显示
+		settextstyle(16, 0, ("Consolas"));
+		settextcolor(BLACK);
+		outtextxy(0, 340, "弹药数：");
+		rectangle(0, 380, (3 * life.getwidth() + 20), 380 + life.getheight() + 10);
+		for (int i = 0; i < rocket_leave; i++) {
+			putimage((i * life.getwidth() + 10), 385, &life);
+		}
+
+		//保护时间信息显示
+		if (isHit == true && game_sum - menu_sum >= 0 && game_sum - menu_sum - car->last < 1) {
+			outtextxy(100, 160, "受保护状态");
+		}
+
+		//分数信息显示
+		outtextxy(0, 250, "获得分数：");
+		PutNumber(0, 280, score);
+		FlushBatchDraw();
+
+		//按下ESC，呈现暂停画面
+		if (GetAsyncKeyState(VK_ESCAPE)) {
+			getimage(&temp, 0, 0, WIDTH, HEIGHT);
+			mciSendString("pause gamemusic", NULL, 0, NULL);
+			//暂停界面显示
+			pauseInterface();
+			mciSendString("resume gamemusic", NULL, 0, NULL);
+		}
+
+		//时间结束，通过终点画面呈现
+		if (game_sum - menu_sum >= 98) {
+			break;
+		}
+	}
+	EndBatchDraw();
+	BeginBatchDraw();
+
+	//通过终点线画面加载
+	while (true) {
+		cleardevice();
+		//如果图片加载到尽头，则重置贴图
+		if (map->y == 0) {
+			map->x = 0;
+			map->y = -(960 * 9);
+		}
+
+		//地图移动
+		map->y += map->speed;
+
+		//将汽车置于地图中央
+		if (car->x != WIDTH / 2 - 100 && car->y != HEIGHT / 2) {
+			if (car->x <= WIDTH / 2 - 100) {
+				car->x += car->speed;
+			}
+			if (car->x >= WIDTH / 2 - 100) {
+				car->x -= car->speed;
+			}
+			if (car->y <= HEIGHT / 2) {
+				car->y += car->speed;
+			}
+			if (car->y >= HEIGHT / 2) {
+				car->y -= car->speed;
+			}
+		}
+		//如果已置于地图中央，则加载终点
+		else {
+			end_y += map->speed;
+		}
+		//地图图片显示
+		putimage(map->x, map->y, &map_2);
+
+		//展示信息表
+		putimage(0, 0, &show);
+
+		//时间显示
+		putimage(110, 37, &number[9 - ((game_sum - menu_sum) / 10)]);	//时间贴图十位
+		putimage(135, 37, &number[9 - ((game_sum - menu_sum) % 10)]);	//时间贴图个位
+
+		//车辆速度显示
+		putimage(110, 15, &number[speed_show / 10]);					//速度贴图十位
+		putimage(135, 15, &number[speed_show % 10]);					//速度贴图个位
+
+		//路程显示
+		distance = speed_show * (game_sum - menu_sum);
+		PutNumber(110, 60, distance, 10, 2, 0, WHITE, "宋体");
+
+		//终点图片显示
+		putimage(150, end_y, &terminalPoint);
+
+		//赛车图片显示
+		putimage(car->x, car->y, &img_1, NOTSRCERASE);
+		putimage(car->x, car->y, &img_2, SRCINVERT);
+
+		//生命值信息显示
+		settextstyle(16, 0, ("Consolas"));
+		settextcolor(BLACK);
+		outtextxy(0, 160, "生命值：");
+		rectangle(0, 200, (3 * life.getwidth() + 20), 200 + life.getheight() + 10);
+		for (int i = 0; i < life_leave; i++) {
+			putimage((i * life.getwidth() + 10), 205, &life);
+		}
+
+		//保护时间信息显示
+		if (game_sum - menu_sum >= 0 && game_sum - menu_sum - car->last <= 1) {
+			outtextxy(100, 160, "受保护状态");
+		}
+
+		//分数信息显示
+		outtextxy(0, 250, "获得分数：");
+		PutNumber(0, 280, score);
+
+		//如果汽车通过终点线，出现结算界面
+		if (car->y + SIZE == end_y) {
+			break;
+		}
+
+		FlushBatchDraw();
+	}
+	EndBatchDraw();
+	winInterface();		//胜利画面
+}
+
+void PutImgWithout(IMAGE& obj, int px, int py, COLORREF withouter = WHITE, DWORD* pbWnd = GetImageBuffer(), int wX = getwidth(), int wY = getheight(), DWORD bitsub = 0x00FFFFFF)
+{
+	DWORD* pbImg = GetImageBuffer(&obj);
+	int iX = obj.getwidth();
+	int iY = obj.getheight();
+	for (int i1 = 0; i1 < iX; i1++)
+	{
+		for (int i2 = 0; i2 < iY; i2++)
+		{
+			// 检测是否越界
+			if (pointTsm(i1 + px, i2 + py, wX, wY) == -1)continue;
+
+			// 检测是否要排除该颜色
+			if ((pbImg[pointTsm(i1, i2, iX, iY)] & bitsub) == BGR(withouter))continue;
+
+			// 操作显存
+			pbWnd[pointTsm(i1 + px, i2 + py, wX, wY)] = pbImg[pointTsm(i1, i2, iX, iY)];
+		}
+	}
+}
+
+void onUp(Car* car) {
+	car->y -= car->speed * (int)round(sin(Forward + PI / 2));
+	car->x -= car->speed * (int)round(cos(Forward + PI / 2));
+}
+
+void onDown(Car* car) {
+	car->y += car->speed * (int)round(sin(Forward + PI / 2));
+	car->x += car->speed * (int)round(cos(Forward + PI / 2));
+}
+
+void onLeft(Car* car) {
+	if (canCircle(car)) {
+		Forward -= PI / Rota;
+		//car->x += (int)round(cos(Forward - PI / 2));
+		//car->y += (int)round(sin(Forward - PI / 2));
+	}
+}
+
+void onRight(Car* car) {
+	if (canCircle(car)) {
+		Forward += PI / Rota;
+		//car->x += (int)round(cos(Forward + PI / 2));
+		//car->y += (int)round(sin(Forward + PI / 2));
+	}
+}
+
+//判断是否可以旋转
+bool canCircle(Car* car) {
+	//指向缓冲区的指针变量
+	DWORD* map;						//创建DWORD类型指针(typedef unsigned int DWORD;)
+	DWORD temp;
+	int temp_x, temp_y;				//用于暂时存储汽车的x ， y值
+	int iX, iY;						//用于暂时存储是否可以旋转时的区域判断x， y值
+	map = GetImageBuffer(&map_1);
+	temp_x = car->x;
+	temp_y = car->y;
+	rotateimage(&car_circle[0], &car_black[0], -Forward, WHITE, true, false);
+	rotateimage(&car_circle[1], &car_black[1], -Forward, WHITE, true, false);
+	iX = car_circle[0].getwidth();
+	iY = car_circle[0].getheight();
+	for (int i = 0; i < iX; i++) {
+		for (int j = 0; j < iY; j++) {
+			temp = map[pointTsm((int)ceil(i + car->x), (int)ceil(j + car->y), WIDTH, HEIGHT)] & 0x00FFFFF;
+			if (temp == BGR(RGB(215, 113, 53))
+				|| temp == BGR(RGB(250, 250, 250))
+				|| temp == BGR(RGB(79, 146, 202))) {
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
+//边缘检测
+void edgeDetection(Car* car) {
+	DWORD temp;
+	//指向缓冲区的指针变量
+	DWORD* map;											//创建DWORD类型指针(typedef unsigned int DWORD;)
+	map = GetImageBuffer(&map_1);						//获取地图的显示缓冲区指针
+	int iX = car_black[0].getwidth();					//汽车图片宽度
+	int iY = car_black[0].getheight();					//汽车图片高度
+
+	//依据像素点颜色判断汽车是否接触边缘
+	for (int i = 0; i < iX; i++)
+	{
+		for (int j = 0; j < iY; j++)
+		{
+			temp = map[pointTsm((int)ceil(i + car->x), (int)ceil(j + car->y), WIDTH, HEIGHT)] & 0x00FFFFFF;
+			if (temp == BGR(RGB(215, 113, 53))
+				|| temp == BGR(RGB(250, 250, 250))
+				|| temp == BGR(RGB(79, 146, 202))) {
+				car->speed = 1;
+			}
+			else {
+				car->speed = 1;
+			}
+		}
+	}
+}
+
+//越界检测
+int pointTsm(int x, int y, int wide, int high)
+{
+	if (x < 0) return x = 0;
+	if (x >= wide) return x = wide;
+	if (y < 0) return y = 0;
+	if (y >= high) return y = high;
+
+	return wide * y + x;
+}
+
+//控制汽车
+void controlCar() {
+	Car* car;
+	IMAGE img_1, img_2;
+	img_1 = car_black[0];
+	img_2 = car_black[1];
+	car = createCar(1000, 750, 1, true, 0);
+	putimage(car->x, car->y, &img_1, NOTSRCERASE);
+	putimage(car->x, car->y, &img_2, SRCINVERT);
+	BeginBatchDraw();									//内存缓冲，避免画面撕裂
+	while (true) {
+		//车向上移动
+		if (GetAsyncKeyState(VK_UP) || GetAsyncKeyState('W')) {
+			onUp(car);
+		}
+
+		//车向下移动
+		if (GetAsyncKeyState(VK_DOWN) || GetAsyncKeyState('S')) {
+			onDown(car);
+		}
+
+		//车向左移动
+		if (GetAsyncKeyState(VK_LEFT) || GetAsyncKeyState('A')) {
+			onLeft(car);
+			rotateimage(&img_1, &car_black[0], -Forward);
+			rotateimage(&img_2, &car_black[1], -Forward, WHITE);
+		}
+
+		//车向右移动
+		if (GetAsyncKeyState(VK_RIGHT) || GetAsyncKeyState('D')) {
+			onRight(car);
+			rotateimage(&img_1, &car_black[0], -Forward);
+			rotateimage(&img_2, &car_black[1], -Forward, WHITE);
+		}
+		cleardevice();
+		putimage(0, 0, &map_1);
+		edgeDetection(car);
+		//putimage(car->x, car->y, &car_black[0], NOTSRCERASE);
+		//putimage(car->x, car->y, &car_black[1], SRCINVERT);
+		putimage(car->x, car->y, &img_1, NOTSRCERASE);
+		putimage(car->x, car->y, &img_2, SRCINVERT);
+		FlushBatchDraw();								//将缓冲画面释放到显示画面
+	}
+
+	EndBatchDraw();										//结束缓冲
+}
+//首次尝试以图片指针的形式，遍历像素颜色，进行图片信息存取，但面临栈溢出的问题
+/*
+void getMapInformation(IMAGE map_1);					//存储地图信息
+//存储地图信息
+void getMapInformation(IMAGE map_1) {
+	int temp[WIDTH * HEIGHT];
+	int count = 0;
+	map = GetImageBuffer(&map_1);
+	for (int i = 0; i < WIDTH*HEIGHT; i++) {
+		if (map[i] == BGR(RGB(250, 250, 250)) || map[i] == BGR(RGB(215, 113, 53)) || map[i] == BGR(RGB(79, 146, 202))) {
+			temp[i] = 1;
+			printf("1");
+		}
+		else {
+			temp[i] = 0;
+			printf("0");
+		}
+	}
+	for (int i = 0; i < WIDTH; i++) {
+		for (int j = 0; j < HEIGHT; j++) {
+			map_information[i][j] = temp[count++];
+		}
+	}
+	//
+	for (int i = 0; i < WIDTH; i++) {
+		for (int j = 0; j < HEIGHT; j++) {
+			if (getpixel(i, j) == RGB(255, 255, 255) || getpixel(i, j) == RGB(215, 113, 53) || getpixel(i, j) == RGB(79, 146, 202)) {
+				map_information[i][j] = 1;
+			}
+		}
+	}
+	for (int i = 0; i < WIDTH; i++) {
+		for (int j = 0; j < HEIGHT; j++) {
+			printf("%d",map_information[i][j]);
+		}
+		printf("\n");
+	}
+}
+*/
